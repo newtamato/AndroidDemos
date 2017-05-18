@@ -12,7 +12,6 @@ import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
-import android.os.Handler;
 import android.support.annotation.RequiresApi;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -42,8 +41,6 @@ public class ScreenShotActivity extends Activity {
     private VirtualDisplay virtualDisplay;
     private ImageReader imageReader = null;
 
-    Handler handler = new Handler();
-
     Button button;
 
     @Override
@@ -71,12 +68,19 @@ public class ScreenShotActivity extends Activity {
         });
     }
 
+    /**
+     * 申请截屏相关权限
+     * */
     protected void checkScreenShotPermission() {
         FileUtil.requestWritePermission(this);
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         startActivityForResult(projectionManager.createScreenCaptureIntent(), SCREEN_CAPTURE_PERMISSION);
     }
 
+    /**
+     * 初始化截屏相关设置
+     * MediaProjectionManager -> MediaProjection -> VirtualDisplay
+     * */
     protected void screenShotPrepare() {
         if(mediaProjection==null)
             return;
@@ -89,6 +93,7 @@ public class ScreenShotActivity extends Activity {
         width = point.x;
         height = point.y;
 
+        //将屏幕画面放入ImageReader关联的Surface中
         imageReader = ImageReader.newInstance(width, height, RGBA_8888, 1);
         virtualDisplay = mediaProjection.createVirtualDisplay("ScreenShotDemo",
                 width, height, metrics.densityDpi,
@@ -107,9 +112,12 @@ public class ScreenShotActivity extends Activity {
         }
     }
 
+    /**
+     * 进行截屏
+     * */
     protected boolean screenShot()
     {
-        Image image = imageReader.acquireLatestImage();
+        Image image = imageReader.acquireLatestImage();  //获取缓冲区中的图像，关键代码
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -119,21 +127,22 @@ public class ScreenShotActivity extends Activity {
         if(image==null)
             return false;
 
+        //Image -> Bitmap
         final Image.Plane[] planes = image.getPlanes();
         final ByteBuffer buffer = planes[0].getBuffer();
-        int rowStride = planes[0].getRowStride();
+        int rowStride = planes[0].getRowStride();  //Image中的行宽，大于Bitmap所设的真实行宽
         byte[] oldBuffer = new byte[rowStride*height];
         buffer.get(oldBuffer);
         byte[] newBuffer = new byte[width*4*height];
 
         Bitmap bitmap = Bitmap.createBitmap(metrics, width, height, Bitmap.Config.ARGB_8888);
         for (int i = 0; i < height; ++i) {
-            System.arraycopy(oldBuffer,i*rowStride,newBuffer,i*width*4,width*4);
+            System.arraycopy(oldBuffer,i*rowStride,newBuffer,i*width*4,width*4);  //跳过多余的行宽部分，关键代码
         }
-        bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(newBuffer));
+        bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(newBuffer));  //用byte数组填充bitmap，关键代码
         image.close();
 
-        return FileUtil.saveImage(""+width+"×"+height+"-test.png",bitmap);
+        return FileUtil.saveImage(""+width+"×"+height+"-ScreenShot.png",bitmap);
     }
 
     @Override
