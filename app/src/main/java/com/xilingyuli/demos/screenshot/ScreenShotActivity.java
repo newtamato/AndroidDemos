@@ -19,11 +19,14 @@ import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 
 import com.xilingyuli.demos.R;
 import com.xilingyuli.demos.utils.FileUtil;
 
 import java.nio.ByteBuffer;
+
+import static android.graphics.PixelFormat.RGBA_8888;
 
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -41,20 +44,29 @@ public class ScreenShotActivity extends Activity {
 
     Handler handler = new Handler();
 
+    Button button;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_screen_shot);
         checkScreenShotPermission();
-        findViewById(R.id.screen_shot).setOnClickListener(new View.OnClickListener() {
+        button = (Button) findViewById(R.id.screen_shot);
+        button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                handler.post(new Runnable() {
+                button.setVisibility(View.GONE);
+                new Thread(new Runnable() {
                     @Override
                     public void run() {
+                        try {
+                            Thread.sleep(100);
+                        }catch (Exception e){
+                            e.printStackTrace();
+                        }
                         screenShot();
                     }
-                });
+                }).start();
             }
         });
     }
@@ -76,9 +88,8 @@ public class ScreenShotActivity extends Activity {
         display.getRealSize(point);
         width = point.x;
         height = point.y;
-        resize();
 
-        imageReader = ImageReader.newInstance(width, height, 0x1, 1);
+        imageReader = ImageReader.newInstance(width, height, RGBA_8888, 1);
         virtualDisplay = mediaProjection.createVirtualDisplay("ScreenShotDemo",
                 width, height, metrics.densityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -98,24 +109,31 @@ public class ScreenShotActivity extends Activity {
 
     protected boolean screenShot()
     {
-        if(virtualDisplay==null)
-            return false;
         Image image = imageReader.acquireLatestImage();
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                button.setVisibility(View.VISIBLE);
+            }
+        });
         if(image==null)
             return false;
 
         final Image.Plane[] planes = image.getPlanes();
         final ByteBuffer buffer = planes[0].getBuffer();
-        int pixelStride = planes[0].getPixelStride();
         int rowStride = planes[0].getRowStride();
+        byte[] oldBuffer = new byte[rowStride*height];
+        buffer.get(oldBuffer);
+        byte[] newBuffer = new byte[width*4*height];
 
-        int w = rowStride/pixelStride;
-        int h = w*height/width;
-
-        Bitmap bitmap = Bitmap.createBitmap(metrics, w, h, Bitmap.Config.ARGB_8888);
-        bitmap.copyPixelsFromBuffer(buffer);
+        Bitmap bitmap = Bitmap.createBitmap(metrics, width, height, Bitmap.Config.ARGB_8888);
+        for (int i = 0; i < height; ++i) {
+            System.arraycopy(oldBuffer,i*rowStride,newBuffer,i*width*4,width*4);
+        }
+        bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(newBuffer));
         image.close();
-        return FileUtil.saveImage(""+w+"×"+h+"test.png",bitmap);
+
+        return FileUtil.saveImage(""+width+"×"+height+"-test.png",bitmap);
     }
 
     @Override
@@ -123,36 +141,5 @@ public class ScreenShotActivity extends Activity {
         super.onDestroy();
         if(virtualDisplay!=null)
             virtualDisplay.release();
-    }
-
-    private void resize(){
-        /*int w = width;
-        int h = height;
-        while (h!=0){
-            if(w>h){
-                w = w+h;
-                h = w-h;
-                w = w-h;
-            }
-            h = h%w;
-        }
-
-        width/=w;
-        height/=w;
-
-        //w向上取整
-        int res = 1;
-        while (w!=0)
-        {
-            w = w>>1;
-            res = res<<1;
-        }
-
-        width *= res;
-        height *= res;*/
-
-        //TODO:经测试得出，大于设定大小，原因未知
-        width = 128*9;
-        height = 128*16;
     }
 }
